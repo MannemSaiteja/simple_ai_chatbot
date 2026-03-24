@@ -25,12 +25,12 @@ genai.configure(api_key=os.getenv("g_key"))
 
 model = genai.GenerativeModel("gemini-2.5-flash")
 
-# In-memory storage (session_id -> messages)
+# In-memory storage/state data is stored in ram (session_id -> messages)
 chat_conv = {}
 
 class ChatRequest(BaseModel):   # Request Body
     message: str
-    session_id: str
+    session_id: str # Session storage - Storing user-specific data
 
 @app.post("/chat")
 def chat(request: ChatRequest):
@@ -41,16 +41,16 @@ def chat(request: ChatRequest):
     try:
         if request.session_id not in chat_conv:
             chat_conv[request.session_id] = []
-        else:
-            chat_conv[request.session_id].append(f'User: {request.message}')
+        chat_conv[request.session_id].append(f'User: {request.message}')
         # Prepare full conversation
         conversation = '\n'.join(chat_conv[request.session_id])
         # send convo to gemini
-        response = model.generate_content(f"You are a helpful career assistant.\n{conversation}") # Model Initialization
+        # response = model.generate_content(f"You are a helpful career assistant.\n{conversation}") # Model Initialization
+        response = model.generate_content(f"\n{conversation}") # Model Initialization
         ai_rply = response.text
         chat_conv[request.session_id].append(f'ai_rply: {ai_rply}')
         print(chat_conv)
-        print(conversation)
+        # print(conversation)
         return {
             "response": ai_rply
         }
@@ -58,7 +58,33 @@ def chat(request: ChatRequest):
         return {"response": str(e)}
 
 
+# get chat history
+@app.get("/history/{session_id}")
+def get_history(session_id: str):
+    try:
+        if session_id not in chat_conv:
+            print(session_id)
+            print(chat_conv)
+            return {"response": "no session_id found "}
+        return {'response': chat_conv[session_id]}
+    except Exception as e:
+        return {'response': f'error: {str(e)}'}
+
+# clear chat history
+@app.delete("/clear/{session_id}")
+def clear_chat(session_id: str):
+    try:
+        if session_id not in chat_conv:
+            return {"response": "session_id not found"}
+        del chat_conv[session_id]
+        return {'response': 'successfully deleted chat history'}
+    except Exception as e:
+        print(str(e))
+
+
 
 
 if __name__ == "__main__":
-    uvicorn.run("app_1:app", reload=True)
+    uvicorn.run("app_1:app") # here if we use reload = True the temporary memory which we used
+    # chat_conv dict will become empty list bcz the uvicorn restarts the server everytime it detect
+    # changes
